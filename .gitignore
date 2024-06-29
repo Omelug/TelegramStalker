@@ -1,0 +1,8 @@
+/.venv/
+/.idea/
+bot.session
+userbot.session
+tg_stalker.dump
+userbot.session-journal
+tg_secret.py
+.idea/
