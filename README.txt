@@ -19,7 +19,8 @@ A / create file secret.py with the following content:
         - change discord web hook if you want to be notified on discord / DEFUALT users ids
         -
 B / run the following commands:
-    1. pip install -r requirements.txt # todo s input_parserem
+    1. make install
     2. python3 tg_stalker.py --help
     3. follow the instructions in the console
+    4. for first time you need to 2FA login code
 

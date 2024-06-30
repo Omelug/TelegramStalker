@@ -1,24 +1,24 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
-
-import asyncio
 from datetime import datetime
 
-import sqlalchemy
-from sqlalchemy import Column, Integer, String, Boolean, select, UniqueConstraint, BigInteger
-from sqlalchemy import DateTime, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, select, UniqueConstraint, BigInteger
+from sqlalchemy import DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
-from sqlalchemy.ext.asyncio import AsyncEngine
 from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.functions.messages import GetHistoryRequest, GetRepliesRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputPeerUser, InputPeerChannel
-from sqlalchemy.dialects.postgresql import insert
+
 from tg_config import CONFIG
+from tg_log import print_d, print_ok
+
 conf = CONFIG["tg_db"]
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,14 @@ async def get_sender(session, client, user_id:int):
 
         if author is None:
             user = await client(GetFullUserRequest(sender))
-            author = Author(id=user.user.id, f_name=user.user.first_name, l_name=user.user.last_name)
+            user_full = user.full_user
+            print_d(f"Added user with name: {user_full.private_forward_name}")
+            #print(f"authoer is {user_full}")
+            first_name, last_name = None, None
+            if user_full.private_forward_name is not None:
+                first_name = " ".join(user_full.private_forward_name.split(" ")[:-1])
+                last_name = user_full.private_forward_name.split(" ")[-1]
+            author = Author(id=user_full.id, f_name=first_name, l_name=last_name)
             session.add(author)
             await session.commit()
     elif isinstance(sender, InputPeerChannel):
@@ -138,6 +145,7 @@ async def insert_message(session, message, client, channel_name):
         set_=dict(save_date=Msg.save_date)
     )
     result = await session.execute(msg)
+    print_d(f"Inserted message {result.inserted_primary_key[0]}")
     return result.inserted_primary_key[0]
 
 async def insert_reply(session, reply,client, channel_name, parent_id):
@@ -154,6 +162,7 @@ async def insert_reply(session, reply,client, channel_name, parent_id):
         index_elements=['tg_order', 'channel_name']
     )
     await session.execute(reply_msg)
+    print_d(f"Inserted reply to  {parent_id}")
 async def delete_message(session, message_id):
     msg = await session.execute(select(Msg).where(Msg.id == message_id))
     message = msg.scalars().first()
@@ -163,8 +172,8 @@ async def delete_message(session, message_id):
 
 class Regex(Base):
     __tablename__ = 'regex'
-    content = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
+    content = Column(String)
+    name = Column(String, nullable=False,primary_key=True)
     __table_args__ = (UniqueConstraint('content', 'name', name='_content_name'),)
 
 async def get_regexes(session, regex_names):

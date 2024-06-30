@@ -1,15 +1,17 @@
 import traceback
 import re
 import traceback
-
+import os
 from discord_webhook import DiscordWebhook
 from input_parser import InputParser
 from lockfile import FileLock, LockTimeout
 from telethon import TelegramClient
 from telethon.errors import MsgIdInvalidError
-
+from telethon.tl.functions.messages import GetHistoryRequest, GetRepliesRequest
 from tg_db import *
 from tg_log import *
+from functools import lru_cache
+
 
 conf=CONFIG['tg_stalker']
 stalker = None
@@ -33,7 +35,10 @@ def get_args():
     print(parser.str_command(args))
     return args
 
+
 def regex_check(regex_list, message, echo=False):
+    if regex_list is None:
+        return True
     if message is None:
         return False
     for regex in regex_list:
@@ -73,23 +78,30 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
             print_e(f"End of history")
             break
         message_c += len(history.messages)
+        print_d(f"Loaded {len(history.messages)} messages")
         for message in history.messages:
             if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
                 return
-            save = False
 
             if message.message is None:
                 print_e(f"message is None")
                 continue
 
-            if regex_list is None or regex_check(regex_list, message.message, echo=True):
-                save = True
+            inserted_id = -1
+            msg_saved = False
 
-            if not conf['ignore_replies'] or save:
+            if regex_check(regex_list, message.message, echo=True):
                 inserted_id = await insert_message(session, message,client, channel_name)
+                msg_saved = True
+
+                #download file
+                if (conf['download_regex_files'] and
+                        message.file and
+                        regex_check(regex_list, message.file.name,echo=True)):
+                    message.download_media(file="./downloads/")
             else:
                 msg_deleted += 1
-
+                print_d("Msg deleted")
             if not conf['ignore_replies']:
                 try:
                     replies = await client(GetRepliesRequest(
@@ -103,16 +115,14 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                         min_id=0,
                         hash=0
                     ))
-                    msg_save=save
+                    print_d(f"Loaded {len(history.messages)} replies")
                     for reply in replies.messages:
                         match = regex_check(regex_list, reply.message, echo=True)
-                        if regex_list is None or (msg_save and conf['regex_all_comments']) or match:
-                            save = True
+                        if regex_list is None or (msg_saved and conf['regex_all_comments']) or match:
+                            if inserted_id == -1:
+                                inserted_id = await insert_message(session, message, client, channel_name)
                             await insert_reply(session, reply, client, channel_name, inserted_id)
                             replies_c=+1
-                    if not save:
-                        await session.rollback()
-                        msg_deleted += 1
                 except MsgIdInvalidError:
                     pass
                     #print(f"message {message.id} has no replies")
@@ -132,6 +142,7 @@ async def save_channel(client, channel_name: str, only_regex=False):
         regex_list = None
         if only_regex:
             regex_list = await get_regexes(session, conf['CHANNEL_STALK_REGEX'][channel_name])
+            compiled_regex_list = [re.compile(regex) for regex in regex_list]
         await save_all_after(session, client, channel.name, channel.last_seen, regex_list=regex_list)
         channel.last_seen = datetime.now()
         await session.commit()
@@ -159,8 +170,19 @@ class Stalker():
     async def scan(self, names=[], max_workers=conf['max_workers'],only_regex=False):
         global stalker
         await stalker.start_client()
+
+
         for channel_name in names:
-            await self.queue.put(channel_name)
+            # async 1 account for now
+            try:
+                print_ok(f"Processing {channel_name}")
+                await save_channel(self.client, channel_name, only_regex=only_regex)
+            except Exception as e:
+                print(f"Error processing task {e}")
+                traceback.print_exc()
+
+
+            """await self.queue.put(channel_name)
 
             workers = [
                 asyncio.create_task(self.worker(only_regex=only_regex))
@@ -170,7 +192,7 @@ class Stalker():
 
             for worker in workers:
                 worker.cancel()
-
+            """
 
 def with_lock(lock_file_path, timeout=10):
     def decorator(func):
@@ -203,6 +225,8 @@ def main():
         names = conf['CHANNEL_SAVE_ALL']
         asyncio.run(stalker.scan(names=names))
     if ARGS.stalk_regex:
+        if conf['download_regex_files']:
+            os.makedirs('./downloads', exist_ok=True)
         names = conf['CHANNEL_STALK_REGEX'].keys()
         asyncio.run(stalker.scan(names=names, only_regex=True))
         print_to_discord("Tg_stalker stalk_regex checked")
