@@ -11,7 +11,8 @@ def print_e(string, condition=True):
 
 
 def print_d(msg):
-    print(Fore.GREEN + msg + Fore.RESET, file=sys.stderr)
+    if CONFIG['all']['DEBUG']:
+        print(Fore.GREEN + msg + Fore.RESET, file=sys.stderr)
 
 
 def print_ok(msg):

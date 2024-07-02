@@ -59,6 +59,8 @@ class Author(Base):
     messages = relationship('Msg', backref='author')
 
 async def get_sender(session, client, user_id:int):
+    if user_id is None:
+        return None
     sender = await client.get_input_entity(user_id)
     author_id = None
 
@@ -71,7 +73,6 @@ async def get_sender(session, client, user_id:int):
             user = await client(GetFullUserRequest(sender))
             user_full = user.full_user
             print_d(f"Added user with name: {user_full.private_forward_name}")
-            #print(f"authoer is {user_full}")
             first_name, last_name = None, None
             if user_full.private_forward_name is not None:
                 first_name = " ".join(user_full.private_forward_name.split(" ")[:-1])
@@ -102,6 +103,8 @@ class Channel(Base):
     name = Column(String, primary_key=True)
     link = Column(String, nullable=True)
     last_seen = Column(DateTime, nullable=True)
+
+    offset_id = Column(Integer, nullable=True)
 
     messages = relationship('Msg', backref='channel')
 
@@ -148,6 +151,12 @@ async def insert_message(session, message, client, channel_name):
     print_d(f"Inserted message {result.inserted_primary_key[0]}")
     return result.inserted_primary_key[0]
 
+async def insert_replies(session, replies):
+    reply_msgs = insert(Msg).values(replies).on_conflict_do_nothing(index_elements=['tg_order', 'channel_name'])
+    await session.execute(reply_msgs)
+    print_d(f"Inserted {len(replies)} replies")
+
+"""   
 async def insert_reply(session, reply,client, channel_name, parent_id):
     author_id = await get_sender(session, client, reply.sender_id)
     reply_msg = insert(Msg).values(
@@ -163,6 +172,8 @@ async def insert_reply(session, reply,client, channel_name, parent_id):
     )
     await session.execute(reply_msg)
     print_d(f"Inserted reply to  {parent_id}")
+"""
+
 async def delete_message(session, message_id):
     msg = await session.execute(select(Msg).where(Msg.id == message_id))
     message = msg.scalars().first()
@@ -197,6 +208,11 @@ async def add_default_regexes(default_regexes):
 async def create_tables(engine: AsyncEngine):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+async def update_offset(channel_name ,offset_id):
+    async with get_session() as session:
+        channel = await get_channel(session, channel_name)
+        channel.offset_id = offset_id
 
 asyncio.run(create_tables(engine))
 default_regexes = CONFIG['default_regexes']

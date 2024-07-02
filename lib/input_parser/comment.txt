@@ -1,0 +1,6 @@
+
+pip3 install -e /home/kali/PycharmProjects/libs/input_parser
+
+sudo vim ~/.zshrc
+export PYTHONPATH=/home/kali/PycharmProjects/libs/input_parser/
+
