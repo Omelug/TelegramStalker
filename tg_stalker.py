@@ -1,25 +1,43 @@
-try:
-    import traceback
-    import re
-    import traceback
-    import os
-    from tg_log import *
-    from tg_db import *
-    from discord_webhook import DiscordWebhook
-    from input_parser import InputParser
-    from lockfile import FileLock, LockTimeout
-    from telethon import TelegramClient
-    from telethon.errors import MsgIdInvalidError, PeerIdInvalidError, ChannelInvalidError, InputUserDeactivatedError, \
-    ChannelPrivateError
-    from telethon.tl.functions.messages import GetHistoryRequest, GetRepliesRequest
-except KeyboardInterrupt:
-    print("\nKeyboardInterrupt during import of modules", file=sys.stderr)
-    sys.exit(1)
 
+#only one script can run at a time
+from discord_webhook import DiscordWebhook
+import importlib
+import re
+import traceback
+import os
+import sys
 
+from telethon.errors import ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError, PeerIdInvalidError, \
+    MsgIdInvalidError
+from telethon.tl.functions.channels import GetMessagesRequest
+from telethon.tl.functions.contacts import ResolveUsernameRequest
+from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.types import InputPeerChannel, PeerChannel, InputPeerChat
 
-conf=CONFIG['tg_stalker']
+from tg_log import print_d, print_e, print_ok
+import asyncio
+from datetime import datetime
+from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset, Channel
+from input_parser import InputParser
+from lockfile import FileLock, LockTimeout
+from tg_config import CONFIG
+from telethon import functions, types, TelegramClient
+
+conf = CONFIG['tg_stalker']
 stalker = None
+
+
+def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'], std=False):
+    if not conf['DISCORD']:
+        return
+    if std:
+        print(msg)
+    if ping and users:
+        for user_id in users:
+            msg = f"<@{user_id}> {msg}"
+    webhook = DiscordWebhook(url=conf['WEBHOOK'], content=msg)
+    webhook.execute()
+
 
 def get_args():
     parser = InputParser()
@@ -53,20 +71,24 @@ def regex_check(regex_list, message, echo=False):
             return True
     return False
 
-def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'], std=False):
-    if not conf['DISCORD']:
-        return
-    if std:
-        print(msg)
-    if ping and users:
-        for user_id in users:
-            msg = f"<@{user_id}> {msg}"
-    webhook = DiscordWebhook(url=conf['WEBHOOK'], content=msg)
-    webhook.execute()
+
 
 async def get_messages(client, offset_id: int, channel_name):
+    try:
+        # Convert the channel name to InputPeerChannel
+        peer = await client.get_input_entity(channel_name)
+    except PeerIdInvalidError:
+        print(f"Invalid channel name: {channel_name}")
+        return []
+    except (ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError) as e:
+        print(f"Error retrieving entity for channel {channel_name}: {e}")
+        return []
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return []
+
     history = await client(GetHistoryRequest(
-        peer=channel_name,
+        peer=peer,
         offset_id=offset_id,
         offset_date=None,
         add_offset=0,
@@ -100,8 +122,8 @@ async def get_all_replies(channel_name, message, client):
 
     while True:
         try:
-            #print(f"Requesting replies for {channel_name} with offset_id {offset_id}")
-            replies = await client(GetRepliesRequest(
+
+            replies = await client(functions.messages.GetRepliesRequest(
                 peer=peer,
                 msg_id=message.id,
                 offset_id=offset_id,
@@ -119,13 +141,19 @@ async def get_all_replies(channel_name, message, client):
         except PeerIdInvalidError:
             print(f"Invalid peer used in GetRepliesRequest for channel: {channel_name}")
             break
+        except MsgIdInvalidError:
+            #print(f"Invalid message id used in GetRepliesRequest for channel: {channel_name}")
+            break
         except Exception as e:
-            print(f"Unexpected error while fetching replies: {e}")
+            print(f"Unexpected error while fetching replies: {e.__class__.__name__} {e} {message.id}")
             break
     return all_replies
 
 
-async def save_replies(session,client,channel_name, message=None, regex_list=[], msg_saved=False, inserted_id=None, stats=None):
+async def save_replies(session, client, channel_name, message=None, regex_list=None,
+                       msg_saved=False, inserted_id=None, stats=None):
+    if regex_list is None:
+        regex_list = []
     if not conf['ignore_replies']:
         try:
 
@@ -173,45 +201,51 @@ async def tg_download(message, regex_list):
         return True
     return False
 
-
 async def save_all_after(session, client, channel_name, last_seen, max_history=conf['max_requests'], offset_id=0, regex_list=None):
 
     stats = {"replies_c": 0,'message_c':0, "msg_insert": 0}
     try:
+        #replies_disabled = await check_replies_disabled(client, channel_name, offset_id)
         for req_count, _ in enumerate(range(max_history)):
             print(f"{req_count=}/{max_history}")
 
             #save messages
             messages = await get_messages(client,offset_id, channel_name)
-            if messages is None:
-                return
             stats['message_c'] += len(messages)
             print_d(f"Loaded {len(messages)} messages")
 
             for message in (message for message in messages if message.message is not None):
                 if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
-                    return
+                    return True
 
                 # Download files
-                downloaded = await tg_download(message, regex_list)
+                await tg_download(message, regex_list)
 
                 # Save message if math
                 inserted_id = -1
                 msg_saved = False
-                if regex_check(regex_list, message.message, echo=True) or downloaded:
+                file_name = (message.file is not None and regex_check(regex_list, message.file.name, echo=True))
+                if file_name:
+                    print(message.file.name)
+                if regex_check(regex_list, message.message, echo=True) or file_name:
                     inserted_id = await insert_message(session, message, client, channel_name)
                     msg_saved = True
-                    stats['message_insert'] += 1
+                    stats['msg_insert'] += 1
 
                 #save replies
+                #print(f"{message}")
+                #result = await check_replies_disabled(client, channel_name, message.id)
+                #print(f"{result}")
+                #if not result:
                 await save_replies(session, client, channel_name, message, regex_list, msg_saved=msg_saved, inserted_id=inserted_id, stats=stats)
 
             offset_id = messages[-1].id
             print(f"{offset_id}\t{stats['msg_insert']}/{stats['message_c']} inserted, {stats['replies_c']} replies")
         return True
-    except KeyboardInterrupt:
-        session.rollback()
+    except asyncio.CancelledError:
+        await session.rollback()
         await update_offset(channel_name, offset_id)
+        print_ok("offset_id updated")
         return False
 
 async def save_channel(client, channel_name: str, only_regex=False):
@@ -229,6 +263,7 @@ async def save_channel(client, channel_name: str, only_regex=False):
         if await save_all_after(session, client, channel.name, channel.last_seen, regex_list=compiled_regex_list, offset_id=offset_id):
             channel.last_seen = datetime.now()
             channel.offset_id = None
+            print_ok("save_channel finished successfully")
 
         await session.commit()
 
@@ -256,7 +291,9 @@ class Stalker():
                 print_e(f"Error processing task {e}")
                 traceback.print_exc()
 
-    async def scan(self, names=[], max_workers=conf['max_workers'],only_regex=False):
+    async def scan(self, names=None, max_workers=conf['max_workers'], only_regex=False):
+        if names is None:
+            names = []
         global stalker
         await stalker.start_client()
 
@@ -294,6 +331,7 @@ def with_lock(lock_file_path, timeout=10):
 
 @with_lock(f"/tmp/{__name__}.lock")
 def main():
+    print_to_discord("Tg_stalker started")
     try:
         ARGS = get_args()
         # print(ARGS.save_new,type(ARGS.save_new))
@@ -314,7 +352,6 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-    print_to_discord("Tg_stalker started")
     main()
 
 

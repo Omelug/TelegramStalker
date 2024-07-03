@@ -77,3 +77,5 @@ TODO
     idk if is the big problem, it is not priority now
 2/ download of regex dont works (and it is not priority yes)
 3/ WTF some weird errors during replies downloading
+4/ checking already running scripts is heavy (I think it is cause by tg_db.py init)
+

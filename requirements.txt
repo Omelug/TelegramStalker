@@ -17,6 +17,7 @@ executing==2.0.1
 fastjsonschema==2.20.0
 greenlet==3.0.3
 idna==3.7
+importlib==1.0.4
 input_parser==0.1
 ipython==8.12.3
 jedi==0.19.1

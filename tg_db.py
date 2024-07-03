@@ -156,24 +156,6 @@ async def insert_replies(session, replies):
     await session.execute(reply_msgs)
     print_d(f"Inserted {len(replies)} replies")
 
-"""   
-async def insert_reply(session, reply,client, channel_name, parent_id):
-    author_id = await get_sender(session, client, reply.sender_id)
-    reply_msg = insert(Msg).values(
-        tg_order=reply.id,
-        send_date=str(reply.date),
-        save_date=str(datetime.now()),
-        author_id=author_id,
-        content=reply.message,
-        channel_name=channel_name,
-        reply_to=parent_id
-    ).on_conflict_do_nothing(
-        index_elements=['tg_order', 'channel_name']
-    )
-    await session.execute(reply_msg)
-    print_d(f"Inserted reply to  {parent_id}")
-"""
-
 async def delete_message(session, message_id):
     msg = await session.execute(select(Msg).where(Msg.id == message_id))
     message = msg.scalars().first()
@@ -213,6 +195,7 @@ async def update_offset(channel_name ,offset_id):
     async with get_session() as session:
         channel = await get_channel(session, channel_name)
         channel.offset_id = offset_id
+        await session.commit()
 
 asyncio.run(create_tables(engine))
 default_regexes = CONFIG['default_regexes']
