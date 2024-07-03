@@ -244,7 +244,7 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
         return True
     except asyncio.CancelledError:
         await session.rollback()
-        await update_offset(channel_name, offset_id)
+        await update_offset(session, channel_name, offset_id)
         print_ok("offset_id updated")
         return False
 
@@ -349,6 +349,9 @@ def main():
             print_to_discord("Tg_stalker stalk_regex checked")
     except KeyboardInterrupt:
         print("\nKeyboardInterrupt", file=sys.stderr)
+        sys.exit(1)
+    except TimeoutError:
+        print_to_discord("\nTimeoutError invalid database connection?", ping=True)
         sys.exit(1)
 
 if __name__ == '__main__':

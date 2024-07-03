@@ -39,7 +39,7 @@ DEFAULT_CONFIG = {
                                 'dbforall' : {'CZ_REGEX', 'SK_REGEX'},
                                 },
         'OPTION_FILE': "options.json",
-        'DISCORD': False,
+        'DISCORD': True,
         'DEFAULT_USERS': ["503629068319588407"],
         'WEBHOOK': "https://discord.com/api/webhooks/1247872452617572486/xkbg2luX_48wKHElCLXpAjypx5Mvq1t_O57kfJknr6tWXrOnmdxU9h7P02BazwGnKRJ1",
         'API_ID': tg_secret.API_ID,

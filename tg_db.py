@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, select, UniqueConstraint, BigInteger
+from sqlalchemy import Column, Integer, String, UniqueConstraint, BigInteger, select
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -17,7 +17,7 @@ from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputPeerUser, InputPeerChannel
 
 from tg_config import CONFIG
-from tg_log import print_d, print_ok
+from tg_log import print_d
 
 conf = CONFIG["tg_db"]
 
@@ -95,8 +95,7 @@ async def get_sender(session, client, user_id:int):
 
 async def get_author(session, author_id: int):
     result = await session.execute(select(Author).where(Author.id == author_id))
-    author = result.scalars().first()
-    return author
+    return result.scalars().first()
 
 class Channel(Base):
     __tablename__ = 'channel'
@@ -108,7 +107,7 @@ class Channel(Base):
 
     messages = relationship('Msg', backref='channel')
 
-async def get_channel(session, name: str):
+async def get_channel(session: AsyncSession, name: str) -> Channel:
     result = await session.execute(select(Channel).where(Channel.name == name))
     channel = result.scalars().first()
 
@@ -191,11 +190,10 @@ async def create_tables(engine: AsyncEngine):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-async def update_offset(channel_name ,offset_id):
-    async with get_session() as session:
-        channel = await get_channel(session, channel_name)
-        channel.offset_id = offset_id
-        await session.commit()
+async def update_offset(session, channel_name ,offset_id):
+    channel = await get_channel(session, channel_name)
+    channel.offset_id = offset_id
+    await session.commit()
 
 asyncio.run(create_tables(engine))
 default_regexes = CONFIG['default_regexes']
