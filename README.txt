@@ -29,9 +29,6 @@ On Linux:
     make venv_init && source .venv/bin/activate (if you want venv)
     make install
 
-1/make venv_init && .venv/bin/activate
-2/make install
-
 __________________________________________________________________
 BEFORE START:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -46,6 +43,8 @@ requirements: python3, postgresSQL link
 ------------------------------------------------------------------
 POSTGRES:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+1/ sudo apt-get install postgresql-16
 
 __________________________________________________________________
 USAGE:

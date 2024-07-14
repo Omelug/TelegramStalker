@@ -10,10 +10,12 @@ code_to_server: FORCE
 
 venv_init:
 	python3 -m venv .venv
+
 req_save:
 	pip3 freeze > requirements.txt
+
 install: FORCE
 	pip3 install -r requirements.txt
-	pip3 install -e ./lib/input_parser/
+	pip3 install git+https://github.com/Omelug/python_mini_modules.git#egg=input_parser
 
 FORCE:
