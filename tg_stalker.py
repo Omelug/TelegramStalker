@@ -1,27 +1,23 @@
-
 #only one script can run at a time
-from discord_webhook import DiscordWebhook
-import importlib
-import re
-import traceback
-import os
-import sys
-
-from telethon.errors import ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError, PeerIdInvalidError, \
-    MsgIdInvalidError
-from telethon.tl.functions.channels import GetMessagesRequest
-from telethon.tl.functions.contacts import ResolveUsernameRequest
-from telethon.tl.functions.messages import GetHistoryRequest
-from telethon.tl.types import InputPeerChannel, PeerChannel, InputPeerChat
-
-from tg_log import print_d, print_e, print_ok
 import asyncio
+import os
+import re
+import sys
+import traceback
 from datetime import datetime
-from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset, Channel
+
+from discord_webhook import DiscordWebhook
 from input_parser import InputParser
 from lockfile import FileLock, LockTimeout
+from telethon import functions, TelegramClient
+from telethon.errors import ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError, PeerIdInvalidError, \
+    MsgIdInvalidError
+from telethon.tl.functions.messages import GetHistoryRequest
+
 from tg_config import CONFIG
-from telethon import functions, types, TelegramClient
+from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset, \
+    Channel
+from tg_log import print_d, print_e, print_ok
 
 conf = CONFIG['tg_stalker']
 stalker = None
@@ -71,20 +67,24 @@ def regex_check(regex_list, message, echo=False):
             return True
     return False
 
-
-
-async def get_messages(client, offset_id: int, channel_name):
+async def get_peer(client, channel_name):
+    peer = None
     try:
-        # Convert the channel name to InputPeerChannel
-        peer = await client.get_input_entity(channel_name)
+         peer = await client.get_input_entity(channel_name)
     except PeerIdInvalidError:
         print(f"Invalid channel name: {channel_name}")
-        return []
     except (ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError) as e:
         print(f"Error retrieving entity for channel {channel_name}: {e}")
-        return []
     except Exception as e:
         print(f"Unexpected error: {e}")
+        print_to_discord(f"Unexpected error: {e}")
+    finally:
+        return peer
+
+async def get_messages(client, offset_id: int, channel_name):
+
+    peer = await get_peer(client, channel_name)
+    if peer is None:
         return []
 
     history = await client(GetHistoryRequest(
@@ -107,17 +107,8 @@ async def get_all_replies(channel_name, message, client):
     offset_id = 0
     all_replies = []
 
-    try:
-        # Convert the channel name to InputPeerChannel
-        peer = await client.get_input_entity(channel_name)
-    except PeerIdInvalidError:
-        print(f"Invalid channel name: {channel_name}")
-        return []
-    except (ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError) as e:
-        print(f"Error retrieving entity for channel {channel_name}: {e}")
-        return []
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+    peer = await get_peer(client, channel_name)
+    if peer is None:
         return []
 
     while True:
@@ -205,12 +196,13 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
 
     stats = {"replies_c": 0,'message_c':0, "msg_insert": 0}
     try:
-        #replies_disabled = await check_replies_disabled(client, channel_name, offset_id)
         for req_count, _ in enumerate(range(max_history)):
             print(f"{req_count=}/{max_history}")
 
             #save messages
             messages = await get_messages(client,offset_id, channel_name)
+            if messages is None or messages is []:
+                return True
             stats['message_c'] += len(messages)
             print_d(f"Loaded {len(messages)} messages")
 
@@ -218,10 +210,8 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                 if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
                     return True
 
-                # Download files
                 await tg_download(message, regex_list)
 
-                # Save message if math
                 inserted_id = -1
                 msg_saved = False
                 file_name = (message.file is not None and regex_check(regex_list, message.file.name, echo=True))
@@ -232,21 +222,17 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                     msg_saved = True
                     stats['msg_insert'] += 1
 
-                #save replies
-                #print(f"{message}")
-                #result = await check_replies_disabled(client, channel_name, message.id)
-                #print(f"{result}")
-                #if not result:
                 await save_replies(session, client, channel_name, message, regex_list, msg_saved=msg_saved, inserted_id=inserted_id, stats=stats)
 
             offset_id = messages[-1].id
             print(f"{offset_id}\t{stats['msg_insert']}/{stats['message_c']} inserted, {stats['replies_c']} replies")
         return True
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, KeyboardInterrupt):
         await session.rollback()
         await update_offset(session, channel_name, offset_id)
         print_ok("offset_id updated")
-        return False
+        raise KeyboardInterrupt
+        #return False
 
 async def save_channel(client, channel_name: str, only_regex=False):
     async with get_session() as session:
@@ -334,7 +320,6 @@ def main():
     print_to_discord("Tg_stalker started")
     try:
         ARGS = get_args()
-        # print(ARGS.save_new,type(ARGS.save_new))
         global stalker
         stalker = Stalker()
 

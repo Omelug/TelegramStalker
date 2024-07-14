@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, UniqueConstraint, BigInteger, select
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
@@ -32,12 +32,12 @@ engine = create_async_engine(
         poolclass=NullPool
     )
 
-SessionLocal = sessionmaker(
-        class_=AsyncSession,
-        bind=engine,
-        expire_on_commit=False,
-        autoflush=False
-    )
+SessionLocal = async_sessionmaker(
+    class_=AsyncSession,
+    bind=engine,
+    expire_on_commit=False,
+    autoflush=False
+)
 
 
 @asynccontextmanager
@@ -147,7 +147,7 @@ async def insert_message(session, message, client, channel_name):
         set_=dict(save_date=Msg.save_date)
     )
     result = await session.execute(msg)
-    print_d(f"Inserted message {result.inserted_primary_key[0]}")
+    print_d(f"Inserted message {message.id}")
     return result.inserted_primary_key[0]
 
 async def insert_replies(session, replies):

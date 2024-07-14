@@ -1,5 +1,0 @@
-setup.py
-input_parser.egg-info/PKG-INFO
-input_parser.egg-info/SOURCES.txt
-input_parser.egg-info/dependency_links.txt
-input_parser.egg-info/top_level.txt

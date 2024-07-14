@@ -38,10 +38,14 @@ BEFORE START:
 
 requirements: python3, postgresSQL link
 
-1/ create postgresSQL database
+1/ create postgresSQL database (if you dont know how, check next section)
 2/ Run "python3 tg_config.py --generate_default" for generating config.json
 3/ edit database connection in ftp_secret.py (optionally edit config.json)
 4/ tg_secret.py is main script, good luck
+
+------------------------------------------------------------------
+POSTGRES:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 __________________________________________________________________
 USAGE:
@@ -78,4 +82,5 @@ TODO
 2/ download of regex dont works (and it is not priority yes)
 3/ WTF some weird errors during replies downloading
 4/ checking already running scripts is heavy (I think it is cause by tg_db.py init)
+5/ do test server and test files regex and other stuff
 
