@@ -1,5 +1,6 @@
 #only one script can run at a time
 import asyncio
+import json
 import os
 import re
 import sys
@@ -182,8 +183,6 @@ async def save_replies(session, client, channel_name, message=None, regex_list=N
             print(f"comments Error  {type(e).__name__}")
             traceback.print_exc()
 
-    await session.commit()
-
 
 async def tg_download(message, regex_list):
     if (conf['download_regex_files'] and message.file and
@@ -207,32 +206,50 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
             print_d(f"Loaded {len(messages)} messages")
 
             for message in (message for message in messages if message.message is not None):
+
+                #Check if already end by date
                 if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
                     return True
 
-                await tg_download(message, regex_list)
-
                 inserted_id = -1
                 msg_saved = False
-                file_name = (message.file is not None and regex_check(regex_list, message.file.name, echo=True))
-                if file_name:
-                    print(message.file.name)
-                if regex_check(regex_list, message.message, echo=True) or file_name:
-                    inserted_id = await insert_message(session, message, client, channel_name)
+
+                #get file name in json
+                file_names = []
+                # Check if message.file is a list (or any iterable other than a string)
+                if isinstance(message.file, (list, tuple, set)):
+                    for file in message.file:
+                        if file.name is not None:
+                            file_names.append(file.name)
+                # Check if message.file is a single object with a 'name' attribute
+                elif message.file is not None and hasattr(message.file, 'name') and message.file.name is not None:
+                    file_names.append(message.file.name)
+
+                file_names_str = str(json.dumps(file_names, ensure_ascii=False))
+                print(file_names_str)
+                file_name = (file_names != [] and regex_check(regex_list, file_names_str, echo=True))
+                await tg_download(message, regex_list)
+
+
+                if regex_list is None or regex_check(regex_list, message.message, echo=True) or file_name:
+                    inserted_id = await insert_message(session, message, client, channel_name, file_names_str)
                     msg_saved = True
                     stats['msg_insert'] += 1
 
                 await save_replies(session, client, channel_name, message, regex_list, msg_saved=msg_saved, inserted_id=inserted_id, stats=stats)
-
-            offset_id = messages[-1].id
+                await session.commit()
+                offset_id = message.id
             print(f"{offset_id}\t{stats['msg_insert']}/{stats['message_c']} inserted, {stats['replies_c']} replies")
         return True
     except (asyncio.CancelledError, KeyboardInterrupt):
         await session.rollback()
+        keyboard_interrupt_occurred = True
+    finally:
         await update_offset(session, channel_name, offset_id)
         print_ok("offset_id updated")
+    if keyboard_interrupt_occurred:
         raise KeyboardInterrupt
-        #return False
+    return False
 
 async def save_channel(client, channel_name: str, only_regex=False):
     async with get_session() as session:
@@ -248,12 +265,10 @@ async def save_channel(client, channel_name: str, only_regex=False):
 
         if await save_all_after(session, client, channel.name, channel.last_seen, regex_list=compiled_regex_list, offset_id=offset_id):
             channel.last_seen = datetime.now()
-            channel.offset_id = None
+            channel.offset_id = 0
             print_ok("save_channel finished successfully")
 
-        await session.commit()
-
-class Stalker():
+class Stalker:
     def __init__(self):
         self.client = None
         self.queue = asyncio.Queue()

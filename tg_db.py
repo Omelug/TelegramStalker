@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -126,6 +127,7 @@ class Msg(Base):
     send_date = Column(String, nullable=True)
     save_date = Column(String, nullable=True)
     content= Column(String, nullable=True)
+    file = Column(String, nullable=True)
     reply_to = Column(Integer, ForeignKey('msg.id'))
 
     author_id = Column(BigInteger, ForeignKey('author.id'))
@@ -133,8 +135,14 @@ class Msg(Base):
     replies = relationship('Msg', backref=backref('parent', remote_side=[id]))
     __table_args__ = (UniqueConstraint('tg_order', 'channel_name', name='_tg_order_channel_uc'),)
 
-async def insert_message(session, message, client, channel_name):
-    author_id = await get_sender(session, client, message.sender_id)
+author_cache = {}
+async def insert_message(session, message, client, channel_name, file_names_str):
+
+    #cache by sender_id to not get another requests
+    author_id = author_cache.get(message.sender_id)
+    if author_id is None:
+        author_id = await get_sender(session, client, message.sender_id)
+        author_cache[message.sender_id] = author_id
     msg = insert(Msg).values(
         tg_order=message.id,
         send_date=str(message.date),
@@ -142,6 +150,7 @@ async def insert_message(session, message, client, channel_name):
         author_id=author_id,
         content=message.message,
         channel_name=channel_name,
+        file=file_names_str
     ).on_conflict_do_update(
         index_elements=['tg_order', 'channel_name'],
         set_=dict(save_date=Msg.save_date)
@@ -184,7 +193,6 @@ async def add_default_regexes(default_regexes):
                 name=name, content=pattern
             ).on_conflict_do_nothing(index_elements=['content','name'])
             await session.execute(reg)
-        await session.commit()
 
 async def create_tables(engine: AsyncEngine):
     async with engine.begin() as conn:

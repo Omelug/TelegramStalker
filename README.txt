@@ -45,6 +45,10 @@ POSTGRES:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 1/ sudo apt-get install postgresql-16
+2/ sudo service postgresql start
+2/ sudo -i -u postgres
+2/ createdb -E UTF8 -T template0 tg_stalker
+3/ psql -d tg_stalker
 
 __________________________________________________________________
 USAGE:
