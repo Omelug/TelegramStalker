@@ -227,8 +227,11 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                     file_names.append(message.file.name)
 
                 file_names_str = str(json.dumps(file_names, ensure_ascii=False))
-                print(file_names_str)
-                file_name = (file_names != [] and regex_check(regex_list, file_names_str, echo=True))
+                if file_names_str == "[]":
+                    file_names_str=None
+                else:
+                    print(file_names)
+                file_name = (file_names_str is not None and regex_check(regex_list, file_names_str, echo=True))
                 await tg_download(message, regex_list)
 
 
