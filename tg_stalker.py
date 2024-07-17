@@ -7,6 +7,7 @@ import sys
 import traceback
 from datetime import datetime
 
+import telethon
 from discord_webhook import DiscordWebhook
 from input_parser import InputParser
 from lockfile import FileLock, LockTimeout
@@ -203,8 +204,8 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
             if messages is None or messages is []:
                 return True
             stats['message_c'] += len(messages)
-            print_d(f"Loaded {len(messages)} messages, Offset{offset_id}")
-
+            print_d(f"Loaded {messages[0].message} messages, Offset: {offset_id}")
+            old_offset_id = offset_id
             for message in (message for message in messages if message.message is not None):
 
                 #Check if already end by date
@@ -239,6 +240,9 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                 await save_replies(session, client, channel_name, message, regex_list, msg_saved=msg_saved, inserted_id=inserted_id, stats=stats)
                 await session.commit()
                 offset_id = message.id
+            if old_offset_id == offset_id:
+                print("Offset didnt change")
+                return True
             print(f"{offset_id}\t{stats['msg_insert']}/{stats['message_c']} inserted, {stats['replies_c']} replies")
         return True
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -288,9 +292,12 @@ class Stalker:
             except KeyboardInterrupt:
                 running = False
                 print_e("Waiting for tasks to finish")
+            except telethon.errors.rpcerrorlist.ChannelPrivateError as e:
+                print(f"ChannelPrivateError {e}")
             except Exception as e:
                 print_e(f"Error processing task {e}")
                 traceback.print_exc()
+
 
     async def scan(self, names=None, max_workers=conf['max_workers'], only_regex=False):
         if names is None:
