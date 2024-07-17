@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+import telethon
 from sqlalchemy import Column, Integer, String, UniqueConstraint, BigInteger, select
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import insert
@@ -13,6 +14,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
+from telethon.errors import rpcerrorlist
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputPeerUser, InputPeerChannel
@@ -70,8 +72,12 @@ async def get_sender(session, client, user_id:int):
         result = await session.execute(select(Author).where(Author.id == author_id))
         author = result.scalars().first()
 
-        if author is None:
-            user = await client(GetFullUserRequest(sender))
+        if author is None and sender.user_id is not None:
+            try:
+                user = await client(GetFullUserRequest(sender))
+            except telethon.errors.rpcerrorlist.ChannelPrivateError:
+                print(f"ChannelPrivateError: {sender.user_id}")
+                return None
             user_full = user.full_user
             print_d(f"Added user with name: {user_full.private_forward_name}")
             first_name, last_name = None, None

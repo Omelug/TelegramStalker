@@ -1,6 +1,7 @@
 USERNAME = root
 SERVER = 45.134.226.157
 DEST_DIR = /root/TelegramStalker
+SAVE_NEW_DEZINFO_CZ = /root/TelegramStalker_dezinfo_cz
 CODE_FILEs = ./*.py ./.venv
 
 .PHONY: code_to_server

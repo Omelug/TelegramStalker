@@ -20,7 +20,7 @@ DEFAULT_CONFIG = {
     },
     'tg_stalker': {
         'OUTPUT': "message_log.json",
-        'CHANNEL_SAVE_ALL': ['svoboda365diskuze'],
+        'CHANNEL_SAVE_ALL': ['stacilocz','svoboda365diskuze'],
         'CHANNEL_SAVE_ALL______': ['stacilocz', 'covidlogika','selskyrozum',
                              'zakonybohatstvi','neCT24', 'otevrisvoumysl',
                              'cz24news','absurdnisvet','lubomirvolnyoficialni',

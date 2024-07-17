@@ -203,7 +203,7 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
             if messages is None or messages is []:
                 return True
             stats['message_c'] += len(messages)
-            print_d(f"Loaded {len(messages)} messages")
+            print_d(f"Loaded {len(messages)} messages, Offset{offset_id}")
 
             for message in (message for message in messages if message.message is not None):
 
