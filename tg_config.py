@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
         'OUTPUT': "message_log.json",
         'CHANNEL_SAVE_ALL': ['stacilocz','covidlogika','selskyrozum',
                              'zakonybohatstvi','neCT24', 'otevrisvoumysl',
-                             'cz24news','absurdnisvet','lubomirvolnyoficialni',
+                             'cz24news','absurdnisvet',
                              'svoboda365','ceskadomobrana',
                              'lubomirvolnyoficialni', 'otevrisvoumysl', 'zakonybohatstvi',
                              'nsfronta'],
@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
                              'svoboda365','ceskadomobrana','svoboda365diskuze',
                              'lubomirvolnyoficialni', 'otevrisvoumysl', 'zakonybohatstvi',
                              'nsfronta'],
+        #'CHANNEL_STALK_REGEX': {'+bvtEhKKZ-884ZGQ0': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'}},
         'CHANNEL_STALK_REGEX': {'breachdetector': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
                                 'nohidespace': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
                                 'mailpass_chat': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
@@ -58,7 +59,7 @@ DEFAULT_CONFIG = {
                                 },
         'OPTION_FILE': "options.json",
         'DISCORD': True,
-        'DEFAULT_USERS': ["503629068319588407"],
+        'DEFAULT_USERS': ["818200264220868630","503629068319588407"],
         'WEBHOOK': "https://discord.com/api/webhooks/1247872452617572486/xkbg2luX_48wKHElCLXpAjypx5Mvq1t_O57kfJknr6tWXrOnmdxU9h7P02BazwGnKRJ1",
         'API_ID': tg_secret.API_ID,
         'API_HASH': tg_secret.API_HASH,
@@ -72,7 +73,9 @@ DEFAULT_CONFIG = {
         'download_regex_files': False
     },
     'tg_db': {
-        'DATABASE_URL_ASYNC': tg_secret.DATABASE_URL_ASYNC,
+        'DATABASE_URL_ASYNC':None,
+        'DATABASE_URL_STALK_REGEX': tg_secret.DATABASE_URL_STALK_REGEX,
+        'DATABASE_URL_SAVE_NEW': tg_secret.DATABASE_URL_SAVE_NEW,
     },
     'default_regexes': {
         "CZ_REGEX" : r'czech|databáze|česk|prague|praha|[^a-zA-Z]cz[^a-zA-Z]',

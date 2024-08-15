@@ -6,24 +6,20 @@ import re
 import sys
 import traceback
 from datetime import datetime
+from functools import lru_cache
 
 import telethon
 from discord_webhook import DiscordWebhook
 from input_parser import InputParser
-from lockfile import FileLock, LockTimeout
+import lockfile
 from telethon import functions, TelegramClient
 from telethon.errors import ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError, PeerIdInvalidError, \
     MsgIdInvalidError
 from telethon.tl.functions.messages import GetHistoryRequest
-
 from tg_config import CONFIG
-from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset, \
-    Channel
 from tg_log import print_d, print_e, print_ok
 
 conf = CONFIG['tg_stalker']
-stalker = None
-
 
 def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'], std=False):
     if not conf['DISCORD']:
@@ -31,10 +27,12 @@ def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'],
     if std:
         print(msg)
     if ping and users:
-        for user_id in users:
-            msg = f"<@{user_id}> {msg}"
-    webhook = DiscordWebhook(url=conf['WEBHOOK'], content=msg)
-    webhook.execute()
+        msg = " ".join([f"<@{user_id}>" for user_id in users]) + f" {msg}"
+    try:
+        DiscordWebhook(url=conf['WEBHOOK'], content=msg).execute()
+    except Exception as e:
+        print_e(f"Discord error {e.__class__.__name__}")
+
 
 
 def get_args():
@@ -52,20 +50,23 @@ def get_args():
                         )
 
     args = parser.parse_args()
-    print("\nFull Command: ")
-    print(parser.str_command(args))
+    print_e("\nFull Command: ")
+    print_e(parser.str_command(args))
     return args
 
+@lru_cache(maxsize=128)
+def get_compiled_regex(regex):
+    return re.compile(regex, re.IGNORECASE | re.DOTALL)
 
-def regex_check(regex_list, message, echo=False):
-    if regex_list is None:
+def regex_check(regex_list, message, echo=False, prefix=""):
+    if not regex_list:
         return True
-    if message is None:
+    if not message:
         return False
     for regex in regex_list:
-        if re.search(regex, message):
+        if get_compiled_regex(regex).search(message):
             if echo:
-                print_to_discord(message, ping=True)
+                print_to_discord(prefix + message, ping=True)
             return True
     return False
 
@@ -74,11 +75,11 @@ async def get_peer(client, channel_name):
     try:
          peer = await client.get_input_entity(channel_name)
     except PeerIdInvalidError:
-        print(f"Invalid channel name: {channel_name}")
+        print_e(f"Invalid channel name: {channel_name}")
     except (ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError) as e:
-        print(f"Error retrieving entity for channel {channel_name}: {e}")
+        print_e(f"Error retrieving entity for channel {channel_name}: {e}")
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print_e(f"Unexpected error: {e}")
         print_to_discord(f"Unexpected error: {e}")
     finally:
         return peer
@@ -88,7 +89,6 @@ async def get_messages(client, offset_id: int, channel_name):
     peer = await get_peer(client, channel_name)
     if peer is None:
         return []
-
     history = await client(GetHistoryRequest(
         peer=peer,
         offset_id=offset_id,
@@ -108,14 +108,11 @@ async def get_messages(client, offset_id: int, channel_name):
 async def get_all_replies(channel_name, message, client):
     offset_id = 0
     all_replies = []
-
     peer = await get_peer(client, channel_name)
     if peer is None:
         return []
-
     while True:
         try:
-
             replies = await client(functions.messages.GetRepliesRequest(
                 peer=peer,
                 msg_id=message.id,
@@ -151,14 +148,13 @@ async def save_replies(session, client, channel_name, message=None, regex_list=N
         try:
 
             replies = await get_all_replies(channel_name, message, client)
-            print_d(f"Loaded {len(replies)} replies for {message.id}")
+            #print_d(f"Loaded {len(replies)} replies for {message.id}")
 
-            # Prepare a list to store all replies
             replies_for_save = []
             author_ids = {}
 
             for reply in replies:
-                match = regex_check(regex_list, reply.message, echo=True)
+                match = regex_check(regex_list, reply.message, echo=True, prefix=f"{channel_name} reply:")
                 if regex_list is None or (msg_saved and conf['regex_all_comments']) or match:
                     if inserted_id == -1:
                         inserted_id = await insert_message(session, message, client, channel_name)
@@ -175,44 +171,42 @@ async def save_replies(session, client, channel_name, message=None, regex_list=N
                     })
                     stats['replies_c'] += 1
 
-            # Insert all replies in one batch
-            if replies_for_save:
+            if replies_for_save: # Insert all replies in one batch
                 await insert_replies(session, replies_for_save)
         except MsgIdInvalidError: # no replies
-            pass
+            print_to_discord(f"MsgIdInvalidError {message.id}")
         except Exception as e:
-            print(f"comments Error  {type(e).__name__}")
+            print_e(f"comments Error  {type(e).__name__}")
             traceback.print_exc()
 
 
-async def tg_download(message, regex_list):
+async def tg_download(message, regex_list, prefix=""):
     if (conf['download_regex_files'] and message.file and
-            regex_check(regex_list, message.file.name, echo=True)):
+            regex_check(regex_list, message.file.name, echo=True, prefix=prefix)):
         await message.download_media(file="./downloads/")
         return True
     return False
 
-async def save_all_after(session, client, channel_name, last_seen, max_history=conf['max_requests'], offset_id=0, regex_list=None):
+async def save_all_after(session, client, channel_name, last_seen, max_history=conf['max_requests'], offset_id=0, regex_list=None)-> bool:
 
     stats = {"replies_c": 0,'message_c':0, "msg_insert": 0}
     try:
         for req_count, _ in enumerate(range(max_history)):
-            print(f"{req_count=}/{max_history}")
-
             #save messages
             messages = await get_messages(client,offset_id, channel_name)
             if messages is None or messages is []:
                 return True
             stats['message_c'] += len(messages)
-            print_d(f"Loaded {messages[0].message} messages, Offset: {offset_id}")
+            print_d(f"Loaded {len(messages)} messages for {channel_name}")
+
             old_offset_id = offset_id
             for message in (message for message in messages if message.message is not None):
 
                 #Check if already end by date
                 if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
+                    print_d(f"Last message is  from {message.date.replace(tzinfo=None)} It is before {last_seen}")
                     return True
 
-                inserted_id = -1
                 msg_saved = False
 
                 #get file name in json
@@ -232,10 +226,11 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                 else:
                     print(file_names)
                 file_name = (file_names_str is not None and regex_check(regex_list, file_names_str, echo=True))
-                await tg_download(message, regex_list)
+                await tg_download(message, regex_list, prefix=f"{channel_name}:")
 
-
-                if regex_list is None or regex_check(regex_list, message.message, echo=True) or file_name:
+                inserted_id = -1
+                if regex_list is None or regex_check(regex_list, message.message, echo=True, prefix=f"{channel_name} :") or file_name:
+                    print(regex_list)
                     inserted_id = await insert_message(session, message, client, channel_name, file_names_str)
                     msg_saved = True
                     stats['msg_insert'] += 1
@@ -253,18 +248,17 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
         keyboard_interrupt_occurred = True
     finally:
         await update_offset(session, channel_name, offset_id)
-        print_ok("offset_id updated")
     if keyboard_interrupt_occurred:
         raise KeyboardInterrupt
     return False
 
 async def save_channel(client, channel_name: str, only_regex=False):
-    async with get_session() as session:
-        channel: Channel = await get_channel(session, channel_name)
+    async with get_session() as session: #session maker have turned off autofalh, nessasay to commit changes
+        channel = await get_channel(session, channel_name)
         compiled_regex_list = None
         if only_regex:
             regex_list = await get_regexes(session, conf['CHANNEL_STALK_REGEX'][channel_name])
-            compiled_regex_list = [re.compile(regex) for regex in regex_list]
+            compiled_regex_list = [regex for regex in regex_list]
 
         offset_id = 0
         if conf['reset'] and channel.offset_id is not None:
@@ -273,7 +267,8 @@ async def save_channel(client, channel_name: str, only_regex=False):
         if await save_all_after(session, client, channel.name, channel.last_seen, regex_list=compiled_regex_list, offset_id=offset_id):
             channel.last_seen = datetime.now()
             channel.offset_id = 0
-            print_ok("save_channel finished successfully")
+            await session.commit()
+            print_ok("saved", end="")
 
 class Stalker:
     def __init__(self):
@@ -282,14 +277,20 @@ class Stalker:
 
     async def start_client(self):
         self.client = TelegramClient('userbot', conf['API_ID'], conf['API_HASH'])
+        print(f"Login: {conf['API_ID']}\n{conf['API_HASH']}\n{conf['PHONE_NUMBER']}")
         await self.client.start(phone=conf['PHONE_NUMBER'])
+
+        if await self.client.is_user_authorized():
+            print_ok("Client successfully logged in.")
+        else:
+            print_to_discord("Client login failed.", ping=True)
 
     async def worker(self, only_regex=False):
         running = True
         while running:
             try:
                 channel_name = await self.queue.get()
-                print_ok(f"Processing {channel_name}")
+                print_ok(f"{channel_name} -> ", end="")
                 await save_channel(self.client, channel_name, only_regex=only_regex)
                 self.queue.task_done()
             except KeyboardInterrupt:
@@ -301,12 +302,11 @@ class Stalker:
                 print_e(f"Error processing task {e}")
                 traceback.print_exc()
 
-
+    #TODO add parallel downloading with multiple clients
     async def scan(self, names=None, max_workers=conf['max_workers'], only_regex=False):
         if names is None:
             names = []
-        global stalker
-        await stalker.start_client()
+        await self.start_client()
 
         for channel_name in names:
             await self.queue.put(channel_name)
@@ -324,14 +324,13 @@ class Stalker:
 def with_lock(lock_file_path, timeout=10):
     def decorator(func):
         def wrapper(*args, **kwargs):
-            lock = FileLock(lock_file_path)
+            lock = lockfile.FileLock(lock_file_path)
             try:
                 lock.acquire(timeout=timeout)
-            except LockTimeout:
-                print("Script is already running. Exiting.")
+            except lockfile.LockTimeout:
+                print_e("Script is already running. Exiting.")
                 print_to_discord("Script is already running. Exiting.", ping=True)
                 sys.exit(0)
-
             try:
                 return func(*args, **kwargs)
             finally:
@@ -340,17 +339,30 @@ def with_lock(lock_file_path, timeout=10):
         return wrapper
     return decorator
 
+def update_database_url(save_new, stalk_regex):
+    if save_new:
+        CONFIG["tg_db"]['DATABASE_URL_ASYNC'] = CONFIG["tg_db"]['DATABASE_URL_SAVE_NEW']
+    elif stalk_regex:
+        CONFIG["tg_db"]['DATABASE_URL_ASYNC'] = CONFIG["tg_db"]['DATABASE_URL_STALK_REGEX']
+
+ARGS = get_args()
+update_database_url(ARGS.save_new, ARGS.stalk_regex)
+from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset
+
 @with_lock(f"/tmp/{__name__}.lock")
 def main():
     print_to_discord("Tg_stalker started")
     try:
-        ARGS = get_args()
-        global stalker
-        stalker = Stalker()
 
+        if ARGS.save_new and ARGS.stalk_regex:
+            print_e("Only one option can be set")
+            sys.exit(1)
+
+        stalker = Stalker()
         if ARGS.save_new:
             names = conf['CHANNEL_SAVE_ALL']
             asyncio.run(stalker.scan(names=names))
+            print_to_discord("Tg_stalker save_new checked")
         if ARGS.stalk_regex:
             if conf['download_regex_files']:
                 os.makedirs('./downloads', exist_ok=True)
@@ -358,7 +370,7 @@ def main():
             asyncio.run(stalker.scan(names=names, only_regex=True))
             print_to_discord("Tg_stalker stalk_regex checked")
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt", file=sys.stderr)
+        print_e("\nKeyboardInterrupt", file=sys.stderr)
         sys.exit(1)
     except TimeoutError:
         print_to_discord("\nTimeoutError invalid database connection?", ping=True)
@@ -366,5 +378,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

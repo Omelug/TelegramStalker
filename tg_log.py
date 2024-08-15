@@ -15,11 +15,11 @@ def print_d(msg):
         print(Fore.GREEN + msg + Fore.RESET, file=sys.stderr)
 
 
-def print_ok(msg):
+def print_ok(msg, **kwargs):
     if CONFIG['tg_stalker']['color_output']:
-        print(Fore.YELLOW + Style.BRIGHT + msg + Fore.RESET)
+        print(Fore.YELLOW + Style.BRIGHT + msg + Fore.RESET, kwargs)
     else:
-        print(msg)
+        print(msg, kwargs)
 
 def print_s(msg):
     print(Fore.YELLOW + Style.BRIGHT + msg + Fore.RESET, file=sys.stderr)

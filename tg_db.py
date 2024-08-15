@@ -1,9 +1,8 @@
-import asyncio
-import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+import asyncio
 import telethon
 from sqlalchemy import Column, Integer, String, UniqueConstraint, BigInteger, select
 from sqlalchemy import DateTime, ForeignKey
@@ -12,15 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
-from telethon.errors import rpcerrorlist
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputPeerUser, InputPeerChannel
 
 from tg_config import CONFIG
-from tg_log import print_d
+from tg_log import print_d, print_e
 
 conf = CONFIG["tg_db"]
 
@@ -76,13 +73,13 @@ async def get_sender(session, client, user_id:int):
             try:
                 user = await client(GetFullUserRequest(sender))
             except telethon.errors.rpcerrorlist.ChannelPrivateError:
-                print(f"ChannelPrivateError: {sender.user_id}")
+                print_e(f"ChannelPrivateError: {sender.user_id}")
                 return None
             user_full = user.full_user
             print_d(f"Added user with name: {user_full.private_forward_name}")
             first_name, last_name = None, None
             if user_full.private_forward_name is not None:
-                first_name = " ".join(user_full.private_forward_name.split(" ")[:-1])
+                first_name = user_full.private_forward_name.rsplit(" ", 1)[0]
                 last_name = user_full.private_forward_name.split(" ")[-1]
             author = Author(id=user_full.id, f_name=first_name, l_name=last_name)
             session.add(author)
@@ -100,10 +97,6 @@ async def get_sender(session, client, user_id:int):
 
     return author_id
 
-async def get_author(session, author_id: int):
-    result = await session.execute(select(Author).where(Author.id == author_id))
-    return result.scalars().first()
-
 class Channel(Base):
     __tablename__ = 'channel'
     name = Column(String, primary_key=True)
@@ -115,8 +108,9 @@ class Channel(Base):
     messages = relationship('Msg', backref='channel')
 
 async def get_channel(session: AsyncSession, name: str) -> Channel:
-    result = await session.execute(select(Channel).where(Channel.name == name))
-    channel = result.scalars().first()
+    channel = (await session.execute(
+        select(Channel).where(Channel.name == name)
+    )).scalars().first()
 
     if channel is None:
         channel = Channel(name=name)
@@ -145,25 +139,38 @@ author_cache = {}
 async def insert_message(session, message, client, channel_name, file_names_str):
 
     #cache by sender_id to not get another requests
-    author_id = author_cache.get(message.sender_id)
-    if author_id is None:
-        author_id = await get_sender(session, client, message.sender_id)
-        author_cache[message.sender_id] = author_id
+    sender_id = author_cache.get(message.sender_id)
+    if sender_id is None:
+        sender_id = await get_sender(session, client, message.sender_id)
+        author_cache[message.sender_id] = sender_id
+
     msg = insert(Msg).values(
         tg_order=message.id,
         send_date=str(message.date),
         save_date=str(datetime.now()),
-        author_id=author_id,
+        author_id=sender_id,
         content=message.message,
         channel_name=channel_name,
         file=file_names_str
-    ).on_conflict_do_update(
-        index_elements=['tg_order', 'channel_name'],
-        set_=dict(save_date=Msg.save_date)
-    )
+    ).on_conflict_do_nothing(index_elements=['tg_order', 'channel_name'])
+
     result = await session.execute(msg)
     print_d(f"Inserted message {message.id}")
-    return result.inserted_primary_key[0]
+
+    if result.inserted_primary_key is not None:
+        print_d(f"Inserted message {message.id}")
+        return result.inserted_primary_key[0]
+    else:
+        existing_msg = await session.execute(
+            select(Msg.id).where(Msg.tg_order == message.id, Msg.channel_name == channel_name)
+        )
+        existing_msg_id = existing_msg.scalar_one_or_none()
+        if existing_msg_id is not None:
+            print_e(f"Message {message.id} already exists with ID {existing_msg_id}")
+            return existing_msg_id
+        else:
+            print_e(f"No existing message found for {message.id}")
+            return None
 
 async def insert_replies(session, replies):
     reply_msgs = insert(Msg).values(replies).on_conflict_do_nothing(index_elements=['tg_order', 'channel_name'])
