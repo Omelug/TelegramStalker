@@ -16,7 +16,8 @@ else:
 
 DEFAULT_CONFIG = {
     'all':{
-        'DEBUG': True
+        'DEBUG': True,
+        'timezone': 'Etc/GMT-2'
     },
     'tg_stalker': {
         'OUTPUT': "message_log.json",

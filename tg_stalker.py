@@ -8,7 +8,7 @@ import traceback
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
-
+import pytz
 import telethon
 from discord_webhook import DiscordWebhook
 from input_parser import input_parser
@@ -21,6 +21,7 @@ from tg_config import CONFIG
 from tg_log import print_d, print_e, print_ok
 
 conf = CONFIG['tg_stalker']
+target_timezone = pytz.timezone(CONFIG['all']['timezone'])
 
 def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'], std=False):
     if not conf['DISCORD']:
@@ -142,6 +143,7 @@ async def get_all_replies(channel_name, message, client):
 
 async def save_replies(session, client, channel_name, message=None, regex_list=None,
                        msg_saved=False, inserted_id=None, stats=None):
+
     if regex_list is None:
         regex_list = []
     if not conf['ignore_replies']:
@@ -186,7 +188,8 @@ async def tg_download(message, regex_list, prefix=""):
         await message.download_media(file="./downloads/")
         return True
     return False
-
+def get_date(msg):
+    return msg.date.astimezone(target_timezone).replace(tzinfo=None)
 run_stats = {"replies_c": 0,'message_c':0, "msg_insert": 0}
 async def save_all_after(session, client, channel_name, last_seen, max_history=conf['max_requests'], offset_id=0, regex_list=None)-> bool | tuple[bool, Any]:
 
@@ -197,9 +200,10 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
             #save messages
             messages = await get_messages(client,offset_id, channel_name)
             if messages is None or messages is []:
-                return True, None
+                return True, first_msg_date
             if first_msg_date is None:
-                first_msg_date = messages[0].date.replace(tzinfo=None)
+                first_msg_date = get_date(messages[0])
+                #print(f"first msg date: {first_msg_date}")
             stats['message_c'] += len(messages)
             print_d(f"loaded {len(messages)} msgs", end=" -> ")
 
@@ -207,8 +211,8 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
             for message in messages:
 
                 #Check if already end by date
-                if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
-                    print_d(f"last is from {message.date.replace(tzinfo=None)}(it is before {last_seen})", end=" -> ")
+                if last_seen is not None and get_date(message) <= last_seen:
+                    print_d(f"last is from {get_date(message)}(it is before {last_seen})", end=" -> ")
                     return True, first_msg_date
 
                 msg_saved = False
@@ -232,7 +236,7 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                 await tg_download(message, regex_list, prefix=f"{channel_name}:")
 
                 inserted_id = -1
-                if regex_list is None or regex_check(regex_list, message.message, echo=True, prefix=f"{channel_name} :") or file_name:
+                if regex_list is None or regex_check(regex_list, message.message, echo=True, prefix=f"{channel_name} : ({get_date(message)})") or file_name:
                     inserted_id = await insert_message(session, message, client, channel_name, file_names_str)
                     msg_saved = True
                     stats['msg_insert'] += 1
@@ -273,11 +277,11 @@ async def save_channel(client, channel_name: str, only_regex=False):
 
         success, new_date = await save_all_after(session, client, channel.name, channel.last_seen, regex_list=compiled_regex_list, offset_id=offset_id)
         if success:
-            if new_date is None:
+            if new_date is not None:
                 channel.last_seen = new_date
             channel.offset_id = 0
             await session.commit()
-            print_ok("saved")
+            print_ok(f"saved to {new_date}" )
 
 class Stalker:
     def __init__(self):
