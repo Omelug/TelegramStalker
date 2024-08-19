@@ -1,8 +1,7 @@
 USERNAME = root
 SERVER = 45.134.226.157
-DEST_DIR = /root/TelegramStalker
-SAVE_NEW_DEZINFO_CZ = /root/TelegramStalker_dezinfo_cz
-CODE_FILEs = ./*.py ./.venv
+DEST_DIR = /home/python_helper/TelegramStalker
+CODE_FILEs = ./*.py ./.venv ./Makefile
 
 .PHONY: code_to_server
 
@@ -16,7 +15,7 @@ req_save:
 	pip3 freeze > requirements.txt
 
 install: FORCE
-	pip3 install -r requirements.txt
 	pip3 install git+https://github.com/Omelug/python_mini_modules.git#egg=input_parser
+	pip3 install -r requirements.txt
 
 FORCE:

@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
         #'CHANNEL_STALK_REGEX': {'+bvtEhKKZ-884ZGQ0': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'}},
         'CHANNEL_STALK_REGEX': {'breachdetector': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
                                 'nohidespace': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
+                                'RansomFeedNews': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
                                 'mailpass_chat': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
                                 'mailvalid' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
                                 'mailaccesscrack' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},

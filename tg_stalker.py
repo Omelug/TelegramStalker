@@ -7,10 +7,11 @@ import sys
 import traceback
 from datetime import datetime
 from functools import lru_cache
+from typing import Any
 
 import telethon
 from discord_webhook import DiscordWebhook
-from input_parser import InputParser
+from input_parser import input_parser
 import lockfile
 from telethon import functions, TelegramClient
 from telethon.errors import ChannelInvalidError, ChannelPrivateError, InputUserDeactivatedError, PeerIdInvalidError, \
@@ -36,7 +37,7 @@ def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'],
 
 
 def get_args():
-    parser = InputParser()
+    parser = input_parser.InputParser()
 
     parser.add_argument("--save_new",
                         input="Save? ",
@@ -129,16 +130,15 @@ async def get_all_replies(channel_name, message, client):
                 break
             offset_id = replies.messages[-1].id
         except PeerIdInvalidError:
-            print(f"Invalid peer used in GetRepliesRequest for channel: {channel_name}")
+            print_e(f"Invalid peer used in GetRepliesRequest for channel: {channel_name}")
             break
         except MsgIdInvalidError:
-            #print(f"Invalid message id used in GetRepliesRequest for channel: {channel_name}")
+            #print_e(f"Invalid message id used in GetRepliesRequest for channel: {channel_name}")
             break
         except Exception as e:
-            print(f"Unexpected error while fetching replies: {e.__class__.__name__} {e} {message.id}")
+            print_e(f"Unexpected error while fetching replies: {e.__class__.__name__} {e} {message.id}")
             break
     return all_replies
-
 
 async def save_replies(session, client, channel_name, message=None, regex_list=None,
                        msg_saved=False, inserted_id=None, stats=None):
@@ -173,7 +173,7 @@ async def save_replies(session, client, channel_name, message=None, regex_list=N
 
             if replies_for_save: # Insert all replies in one batch
                 await insert_replies(session, replies_for_save)
-        except MsgIdInvalidError: # no replies
+        except MsgIdInvalidError: # no replies ?
             print_to_discord(f"MsgIdInvalidError {message.id}")
         except Exception as e:
             print_e(f"comments Error  {type(e).__name__}")
@@ -187,25 +187,29 @@ async def tg_download(message, regex_list, prefix=""):
         return True
     return False
 
-async def save_all_after(session, client, channel_name, last_seen, max_history=conf['max_requests'], offset_id=0, regex_list=None)-> bool:
+run_stats = {"replies_c": 0,'message_c':0, "msg_insert": 0}
+async def save_all_after(session, client, channel_name, last_seen, max_history=conf['max_requests'], offset_id=0, regex_list=None)-> bool | tuple[bool, Any]:
 
     stats = {"replies_c": 0,'message_c':0, "msg_insert": 0}
     try:
+        first_msg_date = None
         for req_count, _ in enumerate(range(max_history)):
             #save messages
             messages = await get_messages(client,offset_id, channel_name)
             if messages is None or messages is []:
-                return True
+                return True, None
+            if first_msg_date is None:
+                first_msg_date = messages[0].date.replace(tzinfo=None)
             stats['message_c'] += len(messages)
-            print_d(f"Loaded {len(messages)} messages for {channel_name}")
+            print_d(f"loaded {len(messages)} msgs", end=" -> ")
 
             old_offset_id = offset_id
-            for message in (message for message in messages if message.message is not None):
+            for message in messages:
 
                 #Check if already end by date
                 if last_seen is not None and message.date.replace(tzinfo=None) <= last_seen:
-                    print_d(f"Last message is  from {message.date.replace(tzinfo=None)} It is before {last_seen}")
-                    return True
+                    print_d(f"last is from {message.date.replace(tzinfo=None)}(it is before {last_seen})", end=" -> ")
+                    return True, first_msg_date
 
                 msg_saved = False
 
@@ -223,14 +227,12 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                 file_names_str = str(json.dumps(file_names, ensure_ascii=False))
                 if file_names_str == "[]":
                     file_names_str=None
-                else:
-                    print(file_names)
-                file_name = (file_names_str is not None and regex_check(regex_list, file_names_str, echo=True))
+
+                file_name = (file_names_str is not None and regex_check(regex_list, file_names_str, echo=True, prefix=f"{channel_name} :"))
                 await tg_download(message, regex_list, prefix=f"{channel_name}:")
 
                 inserted_id = -1
                 if regex_list is None or regex_check(regex_list, message.message, echo=True, prefix=f"{channel_name} :") or file_name:
-                    print(regex_list)
                     inserted_id = await insert_message(session, message, client, channel_name, file_names_str)
                     msg_saved = True
                     stats['msg_insert'] += 1
@@ -239,18 +241,23 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
                 await session.commit()
                 offset_id = message.id
             if old_offset_id == offset_id:
-                print("Offset didnt change")
-                return True
-            print(f"{offset_id}\t{stats['msg_insert']}/{stats['message_c']} inserted, {stats['replies_c']} replies")
-        return True
+                print_ok("Offset didnt change")
+                return True, first_msg_date
+        return True, None #TODO
     except (asyncio.CancelledError, KeyboardInterrupt):
         await session.rollback()
+        print_to_discord("KeyboardInterrupt", ping=True)
         keyboard_interrupt_occurred = True
     finally:
         await update_offset(session, channel_name, offset_id)
+        print_d(f"offset: {offset_id} - {stats['msg_insert']}/{stats['message_c']} messages, {stats['replies_c']} replies", end=" -> ")
+        #save stats into run_stats sum
+        for key in stats:
+            run_stats[key] += stats[key]
+
     if keyboard_interrupt_occurred:
         raise KeyboardInterrupt
-    return False
+    return False, None
 
 async def save_channel(client, channel_name: str, only_regex=False):
     async with get_session() as session: #session maker have turned off autofalh, nessasay to commit changes
@@ -264,11 +271,13 @@ async def save_channel(client, channel_name: str, only_regex=False):
         if conf['reset'] and channel.offset_id is not None:
             offset_id=channel.offset_id
 
-        if await save_all_after(session, client, channel.name, channel.last_seen, regex_list=compiled_regex_list, offset_id=offset_id):
-            channel.last_seen = datetime.now()
+        success, new_date = await save_all_after(session, client, channel.name, channel.last_seen, regex_list=compiled_regex_list, offset_id=offset_id)
+        if success:
+            if new_date is None:
+                channel.last_seen = new_date
             channel.offset_id = 0
             await session.commit()
-            print_ok("saved", end="")
+            print_ok("saved")
 
 class Stalker:
     def __init__(self):
@@ -278,6 +287,7 @@ class Stalker:
     async def start_client(self):
         self.client = TelegramClient('userbot', conf['API_ID'], conf['API_HASH'])
         print(f"Login: {conf['API_ID']}\n{conf['API_HASH']}\n{conf['PHONE_NUMBER']}")
+        # await say WARNING, but it dot works without it
         await self.client.start(phone=conf['PHONE_NUMBER'])
 
         if await self.client.is_user_authorized():
@@ -297,7 +307,7 @@ class Stalker:
                 running = False
                 print_e("Waiting for tasks to finish")
             except telethon.errors.rpcerrorlist.ChannelPrivateError as e:
-                print(f"ChannelPrivateError {e}")
+                print_e(f"ChannelPrivateError {e}")
             except Exception as e:
                 print_e(f"Error processing task {e}")
                 traceback.print_exc()
@@ -319,7 +329,7 @@ class Stalker:
 
             for worker in workers:
                 worker.cancel()
-
+        print_to_discord(f"Run stats: {run_stats['msg_insert']}/{run_stats['message_c']} messages, {run_stats['replies_c']} replies", std=True)
 
 def with_lock(lock_file_path, timeout=10):
     def decorator(func):
@@ -333,6 +343,8 @@ def with_lock(lock_file_path, timeout=10):
                 sys.exit(0)
             try:
                 return func(*args, **kwargs)
+            except Exception as e:
+                print_to_discord(f"with_lock error {e}")
             finally:
                 lock.release()
 
@@ -349,11 +361,10 @@ ARGS = get_args()
 update_database_url(ARGS.save_new, ARGS.stalk_regex)
 from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset
 
-@with_lock(f"/tmp/{__name__}.lock")
+@with_lock(f"/tmp/tg_stalker.lock")
 def main():
     print_to_discord("Tg_stalker started")
     try:
-
         if ARGS.save_new and ARGS.stalk_regex:
             print_e("Only one option can be set")
             sys.exit(1)
@@ -370,7 +381,7 @@ def main():
             asyncio.run(stalker.scan(names=names, only_regex=True))
             print_to_discord("Tg_stalker stalk_regex checked")
     except KeyboardInterrupt:
-        print_e("\nKeyboardInterrupt", file=sys.stderr)
+        print_e("\nKeyboardInterrupt")
         sys.exit(1)
     except TimeoutError:
         print_to_discord("\nTimeoutError invalid database connection?", ping=True)

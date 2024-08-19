@@ -155,10 +155,9 @@ async def insert_message(session, message, client, channel_name, file_names_str)
     ).on_conflict_do_nothing(index_elements=['tg_order', 'channel_name'])
 
     result = await session.execute(msg)
-    print_d(f"Inserted message {message.id}")
 
     if result.inserted_primary_key is not None:
-        print_d(f"Inserted message {message.id}")
+        print_d(f"+ msg {message.id}", end=" -> ")
         return result.inserted_primary_key[0]
     else:
         existing_msg = await session.execute(
@@ -175,7 +174,7 @@ async def insert_message(session, message, client, channel_name, file_names_str)
 async def insert_replies(session, replies):
     reply_msgs = insert(Msg).values(replies).on_conflict_do_nothing(index_elements=['tg_order', 'channel_name'])
     await session.execute(reply_msgs)
-    print_d(f"Inserted {len(replies)} replies")
+    #print_d(f"Inserted {len(replies)} replies")
 
 async def delete_message(session, message_id):
     msg = await session.execute(select(Msg).where(Msg.id == message_id))

@@ -1,0 +1,12 @@
+pg_dump -U postgres -h localhost -d tg_stalker -F c -b -v -f tg_slaker.dump
+scp tg_stalker.dump root@45.134.226.157:/var/lib/postgresql/tg_stalker.dump
+
+pg_restore -U postgres -h 45.134.226.157 -p 5434 -d tg_stalker -v ./tg_stalker.dump
+
+
+
+cron na serveru: NESMI TO BYT SUDO USER !!!
+
+0 * * * * cd /home/python_helper/TelegramStalker && touch /home/python_helper/TelegramStalker/stalk_regex.log && /usr/bin/python3 /home/python_helper/TelegramStalker/tg_stalker.py --stalk_regex 2>&1 | tee -a /home/python_helper/TelegramStalker/stalk_regex.log
+
+30 * * * * cd /home/python_helper/TelegramStalker && touch /home/python_helper/TelegramStalker/save_new.log && /usr/bin/python3 /home/python_helper/TelegramStalker/tg_stalker.py --save_new 2>&1 | tee -a /home/python_helper/TelegramStalker/save_new.log
