@@ -23,41 +23,38 @@ DEFAULT_CONFIG = {
         'OUTPUT': "message_log.json",
         'CHANNEL_SAVE_ALL': ['stacilocz','covidlogika','selskyrozum',
                              'zakonybohatstvi','neCT24', 'otevrisvoumysl',
-                             'cz24news','absurdnisvet',
+                             'cz24news',
                              'svoboda365','ceskadomobrana',
                              'lubomirvolnyoficialni', 'otevrisvoumysl', 'zakonybohatstvi',
                              'nsfronta'],
-        'CHANNEL_SAVE_ALL______': ['stacilocz', 'covidlogika','selskyrozum',
-                             'zakonybohatstvi','neCT24', 'otevrisvoumysl',
-                             'cz24news','absurdnisvet','lubomirvolnyoficialni',
-                             'svoboda365','ceskadomobrana','svoboda365diskuze',
-                             'lubomirvolnyoficialni', 'otevrisvoumysl', 'zakonybohatstvi',
-                             'nsfronta'],
-        #'CHANNEL_STALK_REGEX': {'+bvtEhKKZ-884ZGQ0': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'}},
-        'CHANNEL_STALK_REGEX': {'breachdetector': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'nohidespace': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'RansomFeedNews': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'mailpass_chat': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'mailvalid' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'mailaccesscrack' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'SunriseDataFree' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'Redhash': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'leaked_detabase' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'crackcodes' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'baseleak' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'dbforall' : {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'CyberArmyofRussia_Reborn': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'companydatabasechat': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'noname05716eng': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'noname05716': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'mailaccessmegacloud': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'MAilAccessCracker': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'combospublic': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'DailyCombolist2': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'COMBO_MAILACCESS': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
+        'CHANNEL_STALK_REGEX': {'breachdetector': {'CZ_REGEX', 'SK_REGEX'},
+                                'nohidespace': {'CZ_REGEX', 'SK_REGEX'},
+                                'RansomFeedNews': {'CZ_REGEX', 'SK_REGEX'},
+                                'mailpass_chat': {'CZ_REGEX', 'SK_REGEX'},
+                                'mailvalid' : {'CZ_REGEX', 'SK_REGEX'},
+                                'mailaccesscrack' : {'CZ_REGEX', 'SK_REGEX'},
+                                'SunriseDataFree' : {'CZ_REGEX', 'SK_REGEX'},
+                                'Redhash': {'CZ_REGEX', 'SK_REGEX'},
+                                'leaked_detabase' : {'CZ_REGEX', 'SK_REGEX'},
+                                'crackcodes' : {'CZ_REGEX', 'SK_REGEX'},
+                                'baseleak' : {'CZ_REGEX', 'SK_REGEX'},
+                                'dbforall' : {'CZ_REGEX', 'SK_REGEX'},
+                                'CyberArmyofRussia_Reborn': {'CZ_REGEX', 'SK_REGEX'},
+                                'companydatabasechat': {'CZ_REGEX', 'SK_REGEX'},
+                                'noname05716eng': {'CZ_REGEX', 'SK_REGEX'},
+                                'noname05716': {'CZ_REGEX', 'SK_REGEX'},
+                                'mailaccessmegacloud': {'CZ_REGEX', 'SK_REGEX'},
+                                'MAilAccessCracker': {'CZ_REGEX', 'SK_REGEX'},
+                                'combospublic': {'CZ_REGEX', 'SK_REGEX'},
+                                'DailyCombolist2': {'CZ_REGEX', 'SK_REGEX'},
+                                'COMBO_MAILACCESS': {'CZ_REGEX', 'SK_REGEX'},
                                 'AmeXXt': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'Mailaccess_live_data': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'},
-                                'mailaccessbeast': {'CZ_REGEX', 'SK_REGEX', 'EU_REGEX'}
+                                'Mailaccess_live_data': {'CZ_REGEX', 'SK_REGEX'},
+                                'mailaccessbeast': {'CZ_REGEX', 'SK_REGEX'},
+                                'AntiPlumbers': {'CZ_REGEX', 'SK_REGEX'},
+                                'cRyPtHoN_INFOSEC_EN':{'CZ_REGEX', 'SK_REGEX'},
+                                'ransomwatcher':{'CZ_REGEX', 'SK_REGEX'},
+                                'canyoupwnme':{'CZ_REGEX', 'SK_REGEX'}
                                 },
         'OPTION_FILE': "options.json",
         'DISCORD': True,
@@ -88,8 +85,14 @@ DEFAULT_CONFIG = {
 global CONFIG
 
 def generate_default():
+    def default_encoder(obj):
+        try:
+            return json.JSONEncoder().default(obj)
+        except TypeError:
+            return str(obj)  # Convert non-serializable objects to strings
+
     with open("config.json", 'w') as f:
-        json.dump(CONFIG, f, indent=4)
+        json.dump(CONFIG, f, indent=4, default=default_encoder)
 
 def load_config(config_file="config.json"):
     global CONFIG
@@ -97,7 +100,7 @@ def load_config(config_file="config.json"):
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
             file_config = json.load(f)
-        CONFIG.update(file_config)
+            CONFIG.update(file_config)
 load_config()
 
 if __name__ == "__main__":

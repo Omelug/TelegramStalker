@@ -26,7 +26,7 @@ INSTALLATION:
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 On Linux:
     sudo apt-get install python3 python3-pip
-    make venv_init && source .venv/bin/activate (if you want venv)
+    make venv_init && source .venv/bin/activate (if you want use venv)
     make install
 
 __________________________________________________________________
@@ -82,7 +82,7 @@ TODO
 
 1/ async downloading from telegram - It uses only one users now,
     idk if is the big problem, it is not priority now
-2/ download of regex dont works (and it is not priority yes)
+2/ download of regex files dont works (and it is not priority yes)
 3/ WTF some weird errors during replies downloading
 4/ checking already running scripts is heavy (I think it is cause by tg_db.py init)
 5/ do test server and test files regex and other stuff

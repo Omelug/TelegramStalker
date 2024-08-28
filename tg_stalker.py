@@ -28,12 +28,24 @@ def print_to_discord(msg="msg not set", ping=False, users=conf['DEFAULT_USERS'],
         return
     if std:
         print(msg)
+
     if ping and users:
-        msg = " ".join([f"<@{user_id}>" for user_id in users]) + f" {msg}"
+        ping_msg = " ".join([f"<@{user_id}>" for user_id in users]) + " "
+    else:
+        ping_msg = ""
+
+    max_length = 2000  # Discord's message length limit
+    full_msg = ping_msg + msg
+
     try:
-        DiscordWebhook(url=conf['WEBHOOK'], content=msg).execute()
+        while full_msg:
+            # Split the message if it exceeds the max length
+            part_msg = full_msg[:max_length]
+            DiscordWebhook(url=conf['WEBHOOK'], content=part_msg).execute()
+            full_msg = full_msg[max_length:]
     except Exception as e:
         print_e(f"Discord error {e.__class__.__name__}")
+
 
 
 
@@ -199,7 +211,7 @@ async def save_all_after(session, client, channel_name, last_seen, max_history=c
         for req_count, _ in enumerate(range(max_history)):
             #save messages
             messages = await get_messages(client,offset_id, channel_name)
-            if messages is None or messages is []:
+            if not messages:
                 return True, first_msg_date
             if first_msg_date is None:
                 first_msg_date = get_date(messages[0])
