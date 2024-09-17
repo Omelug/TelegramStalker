@@ -5,11 +5,11 @@ import sys
 secret_file = "tg_secret.py"
 if not os.path.exists(secret_file):
     with open(secret_file, 'w+') as f:
-        print("DATABASE_URL_ASYNC = 'postgresql+asyncpg://<database username>:<password>@localhost:5432/<db_name>'", file=f)
-        print("PHONE_NUMBER = '+420720417270'", file=f)
-        print("API_HASH = '7e65ea367a7c27bf9559828fa38026a5'", file=f)
-        print("API_ID = 123456", file=f)
-        print(f"Please, edit {secret_file}")
+        f.write("DATABASE_URL_ASYNC = 'postgresql+asyncpg://<database username>:<password>@localhost:5432/<db_name>'\n")
+        f.write("PHONE_NUMBER = '+420720417270'\n")
+        f.write("API_HASH = '7e65ea367a7c27bf9559828fa38026a5'\n")
+        f.write("API_ID = 123456\n")
+        f.write(f"Please, edit {secret_file}\n")
     exit(0)
 else:
     import tg_secret
@@ -38,7 +38,7 @@ DEFAULT_CONFIG = {
                                 'leaked_detabase' : {'CZ_REGEX', 'SK_REGEX'},
                                 'crackcodes' : {'CZ_REGEX', 'SK_REGEX'},
                                 'baseleak' : {'CZ_REGEX', 'SK_REGEX'},
-                                'dbforall' : {'CZ_REGEX', 'SK_REGEX'},
+                                #'dbforall' : {'CZ_REGEX', 'SK_REGEX'},
                                 'CyberArmyofRussia_Reborn': {'CZ_REGEX', 'SK_REGEX'},
                                 'companydatabasechat': {'CZ_REGEX', 'SK_REGEX'},
                                 'noname05716eng': {'CZ_REGEX', 'SK_REGEX'},
@@ -54,7 +54,8 @@ DEFAULT_CONFIG = {
                                 'AntiPlumbers': {'CZ_REGEX', 'SK_REGEX'},
                                 'cRyPtHoN_INFOSEC_EN':{'CZ_REGEX', 'SK_REGEX'},
                                 'ransomwatcher':{'CZ_REGEX', 'SK_REGEX'},
-                                'canyoupwnme':{'CZ_REGEX', 'SK_REGEX'}
+                                'canyoupwnme':{'CZ_REGEX', 'SK_REGEX'},
+                                'CyberXdata':{'CZ_REGEX', 'SK_REGEX'},
                                 },
         'OPTION_FILE': "options.json",
         'DISCORD': True,

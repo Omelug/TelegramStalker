@@ -4,7 +4,7 @@ from datetime import datetime
 
 import asyncio
 import telethon
-from sqlalchemy import Column, Integer, String, UniqueConstraint, BigInteger, select
+from sqlalchemy import Column, Integer, String, UniqueConstraint, BigInteger, select, Date
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
@@ -53,8 +53,8 @@ Base = declarative_base()
 class Author(Base):
     __tablename__ = 'author'
     id = Column(BigInteger, primary_key=True)
-    f_name = Column(String, nullable=True)
-    l_name = Column(String, nullable=True)
+    f_name = Column(String(255), nullable=True)
+    l_name = Column(String(64), nullable=True)
 
     messages = relationship('Msg', backref='author')
 
@@ -100,7 +100,7 @@ async def get_sender(session, client, user_id:int):
 class Channel(Base):
     __tablename__ = 'channel'
     name = Column(String, primary_key=True)
-    link = Column(String, nullable=True)
+    description = Column(String(512), nullable=True)
     last_seen = Column(DateTime, nullable=True)
 
     offset_id = Column(Integer, nullable=True)
@@ -124,14 +124,15 @@ class Msg(Base):
     __tablename__ = 'msg'
     id = Column(Integer, primary_key=True, autoincrement=True)
     tg_order = Column(Integer, nullable=False)
-    send_date = Column(String, nullable=True)
-    save_date = Column(String, nullable=True)
-    content= Column(String, nullable=True)
+    send_date = Column(Date, nullable=True)
+    save_date = Column(Date, nullable=True)
+    content= Column(String(4096), nullable=True)
+    #TODO get links to file to extra table
     file = Column(String, nullable=True)
     reply_to = Column(Integer, ForeignKey('msg.id'))
 
     author_id = Column(BigInteger, ForeignKey('author.id'))
-    channel_name = Column(String, ForeignKey('channel.name'))
+    channel_name = Column(String(255), ForeignKey('channel.name'))
     replies = relationship('Msg', backref=backref('parent', remote_side=[id]))
     __table_args__ = (UniqueConstraint('tg_order', 'channel_name', name='_tg_order_channel_uc'),)
 
@@ -146,8 +147,8 @@ async def insert_message(session, message, client, channel_name, file_names_str)
 
     msg = insert(Msg).values(
         tg_order=message.id,
-        send_date=str(message.date),
-        save_date=str(datetime.now()),
+        send_date=datetime.fromisoformat(str(message.date)),
+        save_date=datetime.now(),
         author_id=sender_id,
         content=message.message,
         channel_name=channel_name,
@@ -198,9 +199,9 @@ async def get_regexes(session, regex_names):
             regexes.append(regex.content)
     return regexes
 
-async def add_default_regexes(default_regexes):
+async def add_regexes(regexes):
     async with get_session() as session:
-        for name, pattern in default_regexes.items():
+        for name, pattern in regexes.items():
             reg = insert(Regex).values(
                 name=name, content=pattern
             ).on_conflict_do_nothing(index_elements=['content','name'])
@@ -217,4 +218,4 @@ async def update_offset(session, channel_name ,offset_id):
 
 asyncio.run(create_tables(engine))
 default_regexes = CONFIG['default_regexes']
-asyncio.run(add_default_regexes(default_regexes))
+asyncio.run(add_regexes(default_regexes))

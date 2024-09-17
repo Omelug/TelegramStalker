@@ -1,4 +1,3 @@
-#only one script can run at a time
 import asyncio
 import json
 import os
@@ -176,8 +175,8 @@ async def save_replies(session, client, channel_name, message=None, regex_list=N
                         author_ids[reply.sender_id] = await get_sender(session, client, reply.sender_id)
                     replies_for_save.append({
                         'tg_order': reply.id,
-                        'send_date': str(reply.date),
-                        'save_date': str(datetime.now()),
+                        'send_date': datetime.fromisoformat(str(reply.date)),
+                        'save_date': datetime.now(),
                         'author_id': author_ids[reply.sender_id],
                         'content': reply.message,
                         'channel_name': channel_name,
@@ -314,6 +313,7 @@ class Stalker:
     async def worker(self, only_regex=False):
         running = True
         while running:
+            channel_name = None
             try:
                 channel_name = await self.queue.get()
                 print_ok(f"{channel_name} -> ", end="")
@@ -324,8 +324,11 @@ class Stalker:
                 print_e("Waiting for tasks to finish")
             except telethon.errors.rpcerrorlist.ChannelPrivateError as e:
                 print_e(f"ChannelPrivateError {e}")
+                print_to_discord(f"ChannelPrivateError {channel_name}")
+                self.queue.task_done()
             except Exception as e:
                 print_e(f"Error processing task {e}")
+                print_to_discord(f"Error processing task {e}", ping=True)
                 traceback.print_exc()
 
     #TODO add parallel downloading with multiple clients
@@ -377,7 +380,7 @@ ARGS = get_args()
 update_database_url(ARGS.save_new, ARGS.stalk_regex)
 from tg_db import insert_message, get_sender, get_channel, get_session, insert_replies, get_regexes, update_offset
 
-@with_lock(f"/tmp/tg_stalker.lock")
+@with_lock(f"/tmp/tg_stalker")
 def main():
     print_to_discord("Tg_stalker started")
     try:
