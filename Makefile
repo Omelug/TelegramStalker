@@ -1,9 +1,8 @@
 USERNAME = root
 # change if you use different server xd
 SERVER = 45.134.226.157
-DEST_DIR = /home/python_helper/TelegramStalker
-CODE_FILEs = ./*.py ./.venv ./Makefile
-
+DEST_DIR = /root/TelegramStalker
+CODE_FILEs = ./*.py ./Makefile ./run_tg_stalker.sh tg_secret.ini requirements.txt
 .PHONY: code_to_server
 
 code_to_server: FORCE
